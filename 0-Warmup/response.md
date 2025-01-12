@@ -8,8 +8,8 @@
 
 2. I have installed my virtual machine, tested it, feel comfortable using it, and validated that the required software is installed:
 
-    - [x] YES
-    - [ ] N/A - I plan to use tux
+    - [ ] YES
+    - [x] N/A - I plan to use tux (not tux my server)
     - [ ] NO - Not Yet
 
 
