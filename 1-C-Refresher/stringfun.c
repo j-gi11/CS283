@@ -45,10 +45,6 @@ int setup_buff(char *buff, char *user_str, int len){
     }
 
 
-    if (buff_index == 0) {
-        return -2; //empty user string
-    }
-
     if ( *(buff + buff_index - 1) == ' ') { //if last spot in buff is space reduce the pointer to the end of the buffer by 1
         buff_index--;
     }
@@ -60,10 +56,11 @@ int setup_buff(char *buff, char *user_str, int len){
 }
 
 void print_buff(char *buff, int len){
-    printf("Buffer:  ");
+    printf("Buffer:  [");
     for (int i=0; i<len; i++){
         putchar(*(buff+i));
     }
+    putchar(']');
     putchar('\n');
 }
 
@@ -79,6 +76,8 @@ int count_words(char *buff, int len, int str_len) {
         return -1; //if buff size is less than str_len, then there is an error
     }
 
+    if(str_len == 0) return 0;
+
     for(int i = 0; i < str_len; i++) {
         char current = *(buff + i);
 
@@ -92,22 +91,24 @@ int count_words(char *buff, int len, int str_len) {
 
 int count_word_lengths(char *buff, int str_len) {
     int current_word_len = 0;
+    int num_counter = 1;
     printf("Word Print\n");
     printf("----------\n");
-
+    printf("%d. ", num_counter);
     for(int i = 0; i < str_len; i++) {
         char current = *(buff + i);
         if(current == ' ') { //if space then at the end of the word, print the current length and reset to 0 for next word
-            printf(" (%d)\n", current_word_len);
+            printf("(%d)\n", current_word_len);
             current_word_len = 0;
+            printf("%d. ", ++num_counter);
             continue;
         }
         putchar(current);
         current_word_len++;
     }
-    printf(" (%d)\n", current_word_len); //print for last word that does not have a space after
+    printf("(%d)\n", current_word_len); //print for last word that does not have a space after
     printf("\n");
-    return 0;
+    return num_counter;
 }
 
 //ADD OTHER HELPER FUNCTIONS HERE FOR OTHER REQUIRED PROGRAM OPTIONS
@@ -200,11 +201,15 @@ void insert_to_replace(char* buff, char* replacement, int to_replace_start_index
     //copy the replacement string into the memory where it should be
     memcpy(buff + to_replace_start_index, replacement, replacement_len);
 
-    printf("Modified String:  ");
-    for(int i = 0; i < str_len + (replacement_len - to_replace_len); i++) {
-        putchar(*(buff + i));
+    // printf("Modified String:  ");
+    // for(int i = 0; i < str_len + (replacement_len - to_replace_len); i++) {
+    //     putchar(*(buff + i));
+    // }
+    // printf("\n");
+
+    if (to_replace_start_index + replacement_len + copylength < buff_size) {
+        memset(buff + (str_len + (replacement_len - to_replace_len)), '.', buff_size - (str_len + (replacement_len - to_replace_len)));
     }
-    printf("\n");
 }
 
 
@@ -288,11 +293,7 @@ int main(int argc, char *argv[]){
                 printf("Error reversing string, rc = %d\n", rc);
                 exit(2);
             }
-            printf("Reversed String: ");
-            for(int i = 0; i < user_str_len; i++) {
-                putchar( *(buff + i) );
-            }
-            putchar('\n');
+
             break;
         case 'w':
             rc = count_word_lengths(buff, user_str_len);
@@ -300,6 +301,7 @@ int main(int argc, char *argv[]){
                 printf("Error counting chars, rc = %d\n", rc);
                 exit(2);
             }
+            printf("Number of words returned: %d\n", rc);
             break;
         case 'x':
             rc = replace_string(buff, BUFFER_SZ, user_str_len, argc, argv);
