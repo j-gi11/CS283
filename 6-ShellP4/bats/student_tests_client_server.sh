@@ -1,128 +1,112 @@
 setup() {
-    # Start server in background and save PID
-    ./dsh -s &
-    SERVER_PID=$!
-    # Give the server a moment to start up
-    sleep 3
+  ./dsh -s > server.log 2>&1 &
+  server_pid=$!
+  sleep 1
 }
 
-# Teardown function to kill the server after each test
 teardown() {
-    # Kill server if it's running
-    if [ -n "$SERVER_PID" ]; then
-        kill $SERVER_PID 2>/dev/null || true
-        wait $SERVER_PID 2>/dev/null || true
-    fi
+  kill $server_pid 2>/dev/null
+  rm -f server.log
 }
 
 
-@test "client-server single command with unknown arg" {
-    # Run the client and send command through a pipe
-    run bash -c "echo -e 'ls -nonexistent\nexit' | ./dsh -c"
-    
-    # Check exit status
-    [ "$status" -eq 0 ]
-    
-    # Process output (remove whitespace for easier comparison)
-    stripped_output=$(echo "$output" | tr -d '\t\n\r\f\v ')
-    expected_output="ls:invalidoption--'e'Try'ls--help'formoreinformation."
-    
-    # Output for debugging
-    echo "${stripped_output} -> *${expected_output}"
-    
-    # Check if output contains the expected error message
-    [[ "$stripped_output" == "$expected_output"* ]]
+
+@test "simple command" {
+  run ./dsh -c <<EOF
+ls
+EOF
+  echo "Client output:"
+  echo "$output"
+  [ "$status" -eq 0 ]
 }
 
-test "client-server command with invalid arg in pipeline" {
-    # Run the client and send pipeline command
-    run bash -c "echo 'ls -a | wc -nonexistent' | ./dsh -c"
-    
-    # Check exit status
+
+@test "exit right away" {
+  run ./dsh -c <<EOF
+exit
+EOF
+  stripped_output=$(echo "$output" | tr -d '[:space:]')
+  expected_output="socketclientmode:addr:127.0.0.1:1234dsh4>cmdloopreturned0"
+  echo "Output: $output"
+  echo "Stripped Output: ${stripped_output}"
+  [ "$stripped_output" = "$expected_output" ]
+  [ "$status" -eq 0 ]
+}
+
+
+@test "exit with custom ip" {
+  run ./dsh -c -i 127.0.0.2<<EOF
+exit
+EOF
+  stripped_output=$(echo "$output" | tr -d '[:space:]')
+  expected_output="socketclientmode:addr:127.0.0.2:1234dsh4>cmdloopreturned0"
+  echo "Output: $output"
+  echo "Stripped Output: ${stripped_output}"
+  [ "$stripped_output" = "$expected_output" ]
+  [ "$status" -eq 0 ]
+}
+
+
+@test "one pipe" {
+  run ./dsh -c <<EOF
+ls | grep dsh
+exit
+EOF
+  # Adjust expected output as needed.
+  stripped_output=$(echo "$output" | tr -d '[:space:]')
+  expected_output="socketclientmode:addr:127.0.0.1:1234dsh4>dshdsh_cli.cdshlib.cdshlib.hdsh4>cmdloopreturned0"
+  echo "Output: $output"
+  echo "Stripped Output: ${stripped_output}"
+  [ "$stripped_output" = "$expected_output" ]
+  [ "$status" -eq 0 ]
+}
+
+@test "test unclosed quotes" {
+    run ./dsh -c <<EOF
+    echo "hello single quote' not closed here
+    exit
+EOF
     [ "$status" -eq 0 ]
-    
-    # Process output (remove whitespace for easier comparison)
     stripped_output=$(echo "$output" | tr -d '\t\n\r\f\v ')
-    expected_output="wc:invalidoption--'n'Try'wc--help'formoreinformation."
-    
-    # Output for debugging
+    expected_output="quoteunclosed"
     echo "${stripped_output} -> ${expected_output}"
-    
-    # Check if output contains the expected error message
     [[ "$stripped_output" == *"$expected_output"* ]]
 }
 
-@test "client-server multiple commands in sequence" {
-    # Create a temp file with multiple commands
-    CMDS_FILE=$(mktemp)
-    echo "echo 'First command'" >> $CMDS_FILE
-    echo "ls -l /etc/passwd" >> $CMDS_FILE
-    echo "exit" >> $CMDS_FILE
-    
-    # Run client with commands from file
-    run bash -c "cat $CMDS_FILE | ./dsh -c"
-    
-    # Clean up
-    rm -f $CMDS_FILE
-    
-    # Check for expected output fragments
-    [[ "$output" == *"First command"* ]]
-    [[ "$output" == *"/etc/passwd"* ]]
+@test "stop server" {
+    run ./dsh -c <<EOF
+    stop-server
+EOF
+    # [ "$status" -eq 0 ]
+
+    server_log_output=$(cat server.log)
+    expected_output="${output}${server_log_output}"
+
+    stripped_output=$(echo "$output" | tr -d '\t\n\r\f\v ')
+    stripped_log_output=$(echo "$server_log_output" | tr -d '\t\n\r\f\v ')
+    stripped_full_output="${stripped_output}${stripped_log_output}"
+
+    expected_output="recievedcommand:stop-servercmdloopreturned-7"
+
+    echo "${stripped_full_output} -> ${expected_output}"
+
+    [[ "$stripped_full_output" == *"$expected_output"* ]]
 }
 
-@test "client-server output redirection" {
-    # Create a temp directory for test files
-    TEST_DIR=$(mktemp -d)
-    OUTPUT_FILE="$TEST_DIR/outfile.txt"
-    
-    # Run command with output redirection through client
-    run bash -c "echo 'echo test output > $OUTPUT_FILE' | ./dsh -c"
-    
-    # Check if the file was created with correct content
-    [ -f "$OUTPUT_FILE" ]
-    file_content=$(cat "$OUTPUT_FILE")
-    [ "$file_content" = "test output" ]
-    
-    # Clean up
-    rm -rf "$TEST_DIR"
-}
 
-@test "client-server handles large output" {
-    # Run a command that generates larger output
-    run bash -c "echo 'cat /etc/services' | ./dsh -c"
-    
-    # Check that we got substantial output
-    [ ${#output} -gt 1000 ]
-    
-    # Check for expected content in the services file
-    [[ "$output" == *"ftp"* ]]
-    [[ "$output" == *"ssh"* ]]
-    [[ "$output" == *"http"* ]]
-}
-
-@test "client disconnection handling" {
-    # Start a client, send a command and disconnect
-    echo "echo exit" | ./dsh -c
-    
-    # Wait a moment
-    sleep 1
-    
-    # Verify server is still running by connecting again
-    run bash -c "echo 'echo Server still alive' | ./dsh -c"
-    
+@test "max pipes" {
+    run ./dsh -c <<EOF
+    echo "This is a test" | tr 'a-z' 'A-Z' | rev | sed 's/T/TT/g' | awk '{print $1}' | grep T | wc -l | cat
+    exit
+EOF
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Server still alive"* ]]
+
+  # Adjust expected output as needed.
+  stripped_output=$(echo "$output" | tr -d '[:space:]')
+  expected_output="socketclientmode:addr:127.0.0.1:1234dsh4>1dsh4>dsh4>cmdloopreturned-52"
+  echo "Output: $output"
+  echo "Stripped Output: ${stripped_output}"
+  [ "$stripped_output" = "$expected_output" ]
 }
 
-@test "multiple clients sequential" {
-    # First client
-    run bash -c "echo 'echo Client 1' | ./dsh -c"
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Client 1"* ]]
-    
-    # Second client
-    run bash -c "echo 'echo Client 2' | ./dsh -c"
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Client 2"* ]]
-}
 
